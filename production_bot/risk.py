@@ -5,6 +5,8 @@ from datetime import timedelta
 from decimal import Decimal
 from uuid import uuid4
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from .models import RiskApproval, TradeProposal, utcnow
 from .security import order_hash, sign_approval
 
@@ -24,12 +26,23 @@ class RiskRejected(Exception):
 class RiskEngine:
     """Deterministic authorization layer; it has no exchange credentials."""
 
-    def __init__(self, limits: RiskLimits, signing_secret: bytes, policy_version: str = "risk-v1") -> None:
+    def __init__(self, limits: RiskLimits, signing_key: Ed25519PrivateKey, policy_version: str = "risk-v1") -> None:
         self.limits = limits
-        self.signing_secret = signing_secret
+        self.signing_key = signing_key
         self.policy_version = policy_version
 
-    def authorize(self, proposal: TradeProposal, reference_price: Decimal, current_position_notional: Decimal, daily_loss: Decimal) -> RiskApproval:
+    def authorize(
+        self,
+        proposal: TradeProposal,
+        reference_price: Decimal,
+        current_position_notional: Decimal,
+        daily_loss: Decimal,
+    ) -> RiskApproval:
+        if proposal.quantity <= 0:
+            raise RiskRejected("INVALID_QUANTITY")
+        if proposal.order_type == "limit" and (proposal.price is None or proposal.price <= 0):
+            raise RiskRejected("INVALID_LIMIT_PRICE")
+
         notional = proposal.quantity * (proposal.price or reference_price)
         if notional > self.limits.max_order_notional:
             raise RiskRejected("MAX_ORDER_NOTIONAL_EXCEEDED")
@@ -37,12 +50,14 @@ class RiskEngine:
             raise RiskRejected("MAX_POSITION_NOTIONAL_EXCEEDED")
         if daily_loss >= self.limits.max_daily_loss:
             raise RiskRejected("MAX_DAILY_LOSS_EXCEEDED")
+        if self.limits.approval_ttl_seconds <= 0:
+            raise RiskRejected("INVALID_APPROVAL_TTL")
 
         issued = utcnow()
         expires = issued + timedelta(seconds=self.limits.approval_ttl_seconds)
         nonce = uuid4().hex
         digest = order_hash(proposal)
-        signature = sign_approval(digest, self.policy_version, nonce, expires.isoformat(), self.signing_secret)
+        signature = sign_approval(digest, self.policy_version, nonce, expires.isoformat(), self.signing_key)
         return RiskApproval(
             approval_id=uuid4().hex,
             order_id=proposal.order_id,
