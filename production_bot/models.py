@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Literal
 
 Side = Literal["buy", "sell"]
 OrderType = Literal["market", "limit"]
+ExecutionEnvironment = Literal["testnet", "production"]
 
 
 def utcnow() -> datetime:
@@ -24,7 +25,9 @@ class TradeProposal:
     price: Decimal | None = None
     strategy_id: str = "unknown"
     strategy_version: str = "unknown"
-    created_at: datetime = utcnow()
+    execution_environment: ExecutionEnvironment = "testnet"
+    client_order_id: str = ""
+    created_at: datetime = field(default_factory=utcnow)
 
 
 @dataclass(frozen=True)
