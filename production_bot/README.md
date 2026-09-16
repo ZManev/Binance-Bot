@@ -6,6 +6,14 @@ This package is the production security boundary for live trading. The existing 
 
 `AI/Research -> TradeProposal -> RiskEngine -> RiskApproval -> ExecutionGate -> BinanceAdapter -> Binance`
 
+## BTCUSDT Spot integration
+
+The integration branch `production-integration/btcusdt-testnet` adds the production execution layer around the existing implementation:
+
+`AuthorizedOrder -> ExecutionGate -> ProductionBinanceAdapter -> BinanceAdapter -> BTC/USDT Testnet -> FillEvent -> reconciliation`
+
+`BTCUSDT` is normalized to CCXT's `BTC/USDT` symbol at the exchange boundary. The adapter is allowlisted to BTC/USDT by default.
+
 ## Non-bypassable invariants
 
 1. AI has no exchange credentials.
@@ -26,6 +34,8 @@ This package is the production security boundary for live trading. The existing 
 16. Audit events are tamper-evident.
 17. Production credentials are isolated from dev/staging.
 18. No component can grant itself execution authority.
+19. Real-money execution is fail-closed unless an explicit deployment flag enables it.
+20. Testnet is the default execution environment.
 
 ## Important deployment note
 
