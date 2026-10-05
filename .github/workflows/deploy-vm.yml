@@ -1,0 +1,76 @@
+name: deploy-production-vm
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build production image
+        run: docker build -t trading-platform:${{ github.sha }} .
+      - name: Export image
+        run: docker save trading-platform:${{ github.sha }} | gzip > trading-platform.tar.gz
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+      - name: Transfer image
+        env:
+          HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+          USER: ${{ secrets.PRODUCTION_SSH_USER }}
+        run: scp trading-platform.tar.gz "$USER@$HOST:/tmp/trading-platform.tar.gz"
+      - name: Transfer exchange secrets
+        env:
+          HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+          USER: ${{ secrets.PRODUCTION_SSH_USER }}
+          API_KEY: ${{ secrets.EXCHANGE_API_KEY }}
+          API_SECRET: ${{ secrets.EXCHANGE_API_SECRET }}
+        run: |
+          printf '%s\n' "$API_KEY" > /tmp/exchange_api_key
+          printf '%s\n' "$API_SECRET" > /tmp/exchange_api_secret
+          scp /tmp/exchange_api_key "$USER@$HOST:/tmp/exchange_api_key"
+          scp /tmp/exchange_api_secret "$USER@$HOST:/tmp/exchange_api_secret"
+          rm -f /tmp/exchange_api_key /tmp/exchange_api_secret
+      - name: Deploy container
+        env:
+          HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+          USER: ${{ secrets.PRODUCTION_SSH_USER }}
+        run: |
+          ssh "$USER@$HOST" 'set -eu
+            docker load < /tmp/trading-platform.tar.gz
+            docker rm -f trading-platform 2>/dev/null || true
+            printf "EXCHANGE_API_KEY=" > /tmp/exchange_env
+            cat /tmp/exchange_api_key >> /tmp/exchange_env
+            printf "EXCHANGE_API_SECRET=" >> /tmp/exchange_env
+            cat /tmp/exchange_api_secret >> /tmp/exchange_env
+            printf "PORT=8080\n" >> /tmp/exchange_env
+            chmod 600 /tmp/exchange_env
+            rm -f /tmp/exchange_api_key /tmp/exchange_api_secret /tmp/trading-platform.tar.gz
+            docker run -d --name trading-platform --restart unless-stopped -p 8080:8080 --env-file /tmp/exchange_env trading-platform:${{ github.sha }}
+            rm -f /tmp/exchange_env'
+      - name: Health check
+        env:
+          HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+          USER: ${{ secrets.PRODUCTION_SSH_USER }}
+        run: |
+          for i in $(seq 1 30); do
+            if ssh "$USER@$HOST" 'curl --fail --silent --show-error http://127.0.0.1:8080/healthz'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          ssh "$USER@$HOST" 'docker logs --tail 100 trading-platform'
+          exit 1
