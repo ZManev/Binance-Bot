@@ -1,4 +1,5 @@
 import json
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -120,6 +121,17 @@ def test_non_finite_notional_is_malformed(tmp_path):
     assert adapter.calls == []
     result = json.loads((consumer.root / "rejected" / "a.result.json").read_text())
     assert result["error"] == "MALFORMED_ORDER:ValueError"
+
+
+def test_stop_requested_leaves_orders_unclaimed(tmp_path):
+    consumer, adapter = _consumer(tmp_path)
+    _drop(consumer, "a.json", _payload())
+    stop = threading.Event()
+    stop.set()
+    assert consumer.process_once(stop) == 0
+    assert adapter.calls == []
+    assert (consumer.root / "incoming" / "a.json").exists()
+    assert list((consumer.root / "processing").iterdir()) == []
 
 
 def test_kill_switch_file_blocks_execution(tmp_path):

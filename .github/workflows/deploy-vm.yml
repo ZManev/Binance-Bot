@@ -77,7 +77,7 @@ jobs:
               docker rename trading-platform trading-platform-prev
             fi
             docker volume create trading-state >/dev/null
-            docker run -d --name trading-platform --restart unless-stopped -p 127.0.0.1:8080:8080 -v trading-state:/var/lib/trading --env-file "$d/env" trading-platform:${{ github.sha }}'
+            docker run -d --name trading-platform --restart unless-stopped --stop-timeout 60 -p 127.0.0.1:8080:8080 -v trading-state:/var/lib/trading --env-file "$d/env" trading-platform:${{ github.sha }}'
       - name: Health check
         env:
           HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
