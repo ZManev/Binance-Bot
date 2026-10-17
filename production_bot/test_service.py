@@ -66,6 +66,19 @@ def test_valid_order_is_executed_once(tmp_path):
     assert (consumer.root / "rejected" / "b.json").exists()
 
 
+def test_reused_filename_keeps_earlier_record(tmp_path):
+    consumer, adapter = _consumer(tmp_path)
+    _drop(consumer, "order.json", _payload("o1"))
+    consumer.process_once()
+    _drop(consumer, "order.json", _payload("o2"))
+    consumer.process_once()
+    assert adapter.calls == ["o1", "o2"]
+    results = sorted((consumer.root / "done").glob("order*.result.json"))
+    orders = {json.loads(p.read_text())["order_id"] for p in results}
+    assert orders == {"o1", "o2"}
+    assert len(list((consumer.root / "done").glob("order*.json"))) == 4
+
+
 def test_idempotency_survives_restart(tmp_path):
     consumer, _ = _consumer(tmp_path)
     _drop(consumer, "a.json", _payload())
