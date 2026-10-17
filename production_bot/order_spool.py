@@ -21,6 +21,14 @@ def _dt(value: str) -> datetime:
     return parsed
 
 
+def _dec(value: Any) -> Decimal:
+    # NaN/Infinity are malformed input, not an uncertain exchange outcome.
+    parsed = Decimal(str(value))
+    if not parsed.is_finite():
+        raise ValueError("NON_FINITE_DECIMAL")
+    return parsed
+
+
 def parse_order(data: dict[str, Any]) -> AuthorizedOrder:
     p = data["proposal"]
     a = data["approval"]
@@ -29,9 +37,9 @@ def parse_order(data: dict[str, Any]) -> AuthorizedOrder:
         account_id=p["account_id"],
         symbol=p["symbol"],
         side=p["side"],
-        quantity=Decimal(str(p["quantity"])),
+        quantity=_dec(p["quantity"]),
         order_type=p.get("order_type", "market"),
-        price=Decimal(str(p["price"])) if p.get("price") is not None else None,
+        price=_dec(p["price"]) if p.get("price") is not None else None,
         strategy_id=p.get("strategy_id", "unknown"),
         strategy_version=p.get("strategy_version", "unknown"),
         exchange=p.get("exchange", ""),
@@ -40,8 +48,8 @@ def parse_order(data: dict[str, Any]) -> AuthorizedOrder:
         approval_id=a["approval_id"],
         order_id=a["order_id"],
         order_hash=a["order_hash"],
-        approved_quantity=Decimal(str(a["approved_quantity"])),
-        approved_notional=Decimal(str(a["approved_notional"])),
+        approved_quantity=_dec(a["approved_quantity"]),
+        approved_notional=_dec(a["approved_notional"]),
         policy_version=a["policy_version"],
         issued_at=_dt(a["issued_at"]),
         expires_at=_dt(a["expires_at"]),
