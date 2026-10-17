@@ -26,6 +26,7 @@ def canonical_order(proposal: Any) -> bytes:
         "price": _json_value(proposal.price),
         "strategy_id": proposal.strategy_id,
         "strategy_version": proposal.strategy_version,
+        "exchange": getattr(proposal, "exchange", ""),
     }
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
 
