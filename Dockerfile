@@ -5,4 +5,7 @@ COPY . /app
 RUN python -m pip install --no-cache-dir --upgrade pip && python -m pip install --no-cache-dir pytest ccxt
 RUN python -m pytest -q production_bot
 EXPOSE 8080
-CMD ["python", "-m", "production_bot.deployment_health"]
+RUN useradd --system --uid 10001 trading && mkdir -p /var/lib/trading && chown trading /var/lib/trading
+USER trading
+VOLUME ["/var/lib/trading"]
+CMD ["python", "-m", "production_bot.service"]
