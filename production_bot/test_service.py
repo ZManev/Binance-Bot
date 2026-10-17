@@ -28,11 +28,14 @@ class Kill:
 
 
 def _payload(order_id="o1", expires_delta=timedelta(minutes=1)):
-    proposal = TradeProposal(order_id, "acct", "BTC/USDT", "buy", Decimal("0.001"))
+    proposal = TradeProposal(order_id, "acct", "BTC/USDT", "buy", Decimal("0.001"), exchange="binance")
     digest = order_hash(proposal)
     expires_at = (datetime.now(timezone.utc) + expires_delta).isoformat()
     return {
-        "proposal": {"order_id": order_id, "account_id": "acct", "symbol": "BTC/USDT", "side": "buy", "quantity": "0.001"},
+        "proposal": {
+            "order_id": order_id, "account_id": "acct", "symbol": "BTC/USDT", "side": "buy",
+            "quantity": "0.001", "exchange": "binance",
+        },
         "approval": {
             "approval_id": "a1", "order_id": order_id, "order_hash": digest,
             "approved_quantity": "0.001", "approved_notional": "60", "policy_version": "v1",

@@ -25,7 +25,14 @@ class Reconciler:
         if normalized_status in {"filled", "closed"} and observed == expected_quantity:
             return ReconciliationResult(fill.execution_id, expected_quantity, observed, "RECONCILED", "EXACT_FILLED_QUANTITY")
 
+        if observed > expected_quantity:
+            # Overfill is never an authorized state, whatever the venue status says.
+            return ReconciliationResult(fill.execution_id, expected_quantity, observed, "MISMATCH", "OVERFILL")
+
         if normalized_status in {"canceled", "cancelled", "rejected", "expired"}:
+            if observed == expected_quantity:
+                # Fully executed even though the venue reports a terminal non-fill status.
+                return ReconciliationResult(fill.execution_id, expected_quantity, observed, "FILLED_TERMINAL", f"{normalized_status.upper()}_AFTER_FULL_FILL")
             if observed > Decimal("0"):
                 # Terminal, but some quantity executed: callers must account for it.
                 return ReconciliationResult(fill.execution_id, expected_quantity, observed, "PARTIAL_TERMINAL", f"{normalized_status.upper()}_AFTER_PARTIAL_FILL")

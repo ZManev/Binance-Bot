@@ -78,6 +78,21 @@ def test_canceled_partial_fill_is_terminal():
     assert result.observed_quantity == Decimal("0.4")
 
 
+@pytest.mark.parametrize("status,observed,expected_status,reason", [
+    ("canceled", "1", "FILLED_TERMINAL", "CANCELED_AFTER_FULL_FILL"),
+    ("canceled", "1.5", "MISMATCH", "OVERFILL"),
+    ("closed", "1.5", "MISMATCH", "OVERFILL"),
+])
+def test_terminal_full_fill_and_overfill(status, observed, expected_status, reason):
+    fill = FillEvent(
+        "exec-6", "kraken", "459", "BTC/USD", "buy",
+        Decimal("1"), Decimal(observed), None, None, None, status, {}
+    )
+    result = Reconciler().reconcile(Decimal("1"), fill)
+    assert result.status == expected_status
+    assert result.reason == reason
+
+
 def test_canceled_unfilled_order_is_rejected_or_canceled():
     fill = FillEvent(
         "exec-5", "kraken", "458", "BTC/USD", "buy",
