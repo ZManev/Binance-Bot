@@ -31,7 +31,8 @@ jobs:
         env:
           HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
           USER: ${{ secrets.PRODUCTION_SSH_USER }}
-        run: scp trading-platform.tar.gz "$USER@$HOST:/tmp/trading-platform.tar.gz"
+        # Upload to the deploy user's home, not shared /tmp; the deploy step verifies its checksum.
+        run: scp trading-platform.tar.gz "$USER@$HOST:trading-platform.tar.gz"
       - name: Deploy container
         env:
           HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
@@ -51,6 +52,10 @@ jobs:
           case "$LIVE_TRADING" in
             true|false) ;;
             *) echo "Invalid LIVE_TRADING (must be true or false)" >&2; exit 1 ;;
+          esac
+          IMAGE_SHA=$(sha256sum trading-platform.tar.gz | cut -d' ' -f1)
+          case "$IMAGE_SHA" in
+            *[!0-9a-f]*|"") echo "Invalid image checksum" >&2; exit 1 ;;
           esac
           # Secrets travel over SSH stdin only; nothing is written to disk on the runner.
           {
@@ -84,8 +89,10 @@ jobs:
             }
             trap cleanup EXIT
             cat > "$d/env"
-            docker load < /tmp/trading-platform.tar.gz
-            rm -f /tmp/trading-platform.tar.gz
+            # Move the image into the private dir first, then verify it: nobody else can swap it after the check.
+            mv "$HOME/trading-platform.tar.gz" "$d/image.tar.gz"
+            echo "'"$IMAGE_SHA"'  $d/image.tar.gz" | sha256sum -c --quiet -
+            docker load < "$d/image.tar.gz"
             # Keep the previous container (stopped) for rollback; never force-kill an order in flight.
             docker rm -f trading-platform-prev 2>/dev/null || true
             if docker container inspect trading-platform >/dev/null 2>&1; then
