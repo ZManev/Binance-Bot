@@ -188,6 +188,18 @@ def test_market_order_without_quote_is_rejected():
     assert adapter.exchange.calls == []
 
 
+def test_quote_fetch_failure_is_pre_submit_rejection():
+    adapter = _adapter()
+
+    def boom(symbol):
+        raise ConnectionError("network down")
+
+    adapter.exchange.fetch_ticker = boom
+    with pytest.raises(PreSubmitRejection, match="REFERENCE_PRICE_UNAVAILABLE:ConnectionError"):
+        adapter.submit(_order())
+    assert adapter.exchange.calls == []
+
+
 def test_adapter_honours_kill_switch_on_direct_call():
     class On:
         def active(self, *a): return True

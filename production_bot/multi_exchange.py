@@ -89,14 +89,23 @@ class CcxtExchangeAdapter:
             return p.price
         if p.order_type != "market":
             raise InvalidOrder(f"UNSUPPORTED_ORDER_TYPE:{p.order_type}")
-        # Read-only quote; no order is sent if this fails.
-        ticker = self.exchange.fetch_ticker(p.symbol)
+        # Read-only quote; no order is sent if this fails, so any failure is a pre-submit rejection.
+        try:
+            ticker = self.exchange.fetch_ticker(p.symbol)
+        except Exception as exc:
+            raise InvalidOrder(f"REFERENCE_PRICE_UNAVAILABLE:{type(exc).__name__}") from exc
         quote = ticker.get("ask") if p.side == "buy" else ticker.get("bid")
         if quote is None:
             quote = ticker.get("last")
         if quote is None:
             raise InvalidOrder("NO_REFERENCE_PRICE")
-        return Decimal(str(quote))
+        try:
+            price = Decimal(str(quote))
+        except ArithmeticError as exc:
+            raise InvalidOrder("INVALID_REFERENCE_PRICE") from exc
+        if not price.is_finite() or price <= 0:
+            raise InvalidOrder("INVALID_REFERENCE_PRICE")
+        return price
 
     def _check_notional(self, order: AuthorizedOrder) -> None:
         price = self._reference_price(order)
