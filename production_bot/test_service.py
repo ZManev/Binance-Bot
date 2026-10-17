@@ -58,6 +58,20 @@ def _drop(consumer, name, payload):
     publish_order(str(consumer.root), name, payload)
 
 
+def test_publish_refuses_to_replace_pending_order(tmp_path):
+    consumer, adapter = _consumer(tmp_path)
+    _drop(consumer, "order.json", _payload("o1"))
+    try:
+        _drop(consumer, "order.json", _payload("o2"))
+    except FileExistsError:
+        pass
+    else:
+        raise AssertionError("second publish must not replace the pending order")
+    assert [p.name for p in (consumer.root / "incoming").iterdir()] == ["order.json"]  # no temp left behind
+    consumer.process_once()
+    assert adapter.calls == ["o1"]
+
+
 def test_in_progress_temp_file_is_ignored(tmp_path):
     consumer, adapter = _consumer(tmp_path)
     partial = consumer.root / "incoming" / ".abc.a.json.tmp"

@@ -71,12 +71,17 @@ def publish_order(spool_dir: str, name: str, payload: dict[str, Any]) -> Path:
         raise ValueError("INVALID_ORDER_FILENAME")
     incoming = Path(spool_dir) / "incoming"
     tmp = incoming / f".{uuid4().hex}.{name}.tmp"
-    with open(tmp, "x") as fh:
-        fh.write(json.dumps(payload))
-        fh.flush()
-        os.fsync(fh.fileno())
     final = incoming / name
-    os.rename(tmp, final)
+    try:
+        with open(tmp, "x") as fh:
+            fh.write(json.dumps(payload))
+            fh.flush()
+            os.fsync(fh.fileno())
+        # link() never replaces an existing file: a pending order with the same
+        # name raises FileExistsError instead of being silently overwritten.
+        os.link(tmp, final)
+    finally:
+        tmp.unlink(missing_ok=True)
     return final
 
 
