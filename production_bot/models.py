@@ -25,6 +25,8 @@ class TradeProposal:
     strategy_id: str = "unknown"
     strategy_version: str = "unknown"
     created_at: datetime = utcnow()
+    # Venue the approval is bound to (part of the signed order hash). Empty never executes on a CCXT venue.
+    exchange: str = ""
 
 
 @dataclass(frozen=True)

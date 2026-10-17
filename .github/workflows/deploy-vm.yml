@@ -1,0 +1,126 @@
+name: deploy-production-vm
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build production image
+        run: docker build -t trading-platform:${{ github.sha }} .
+      - name: Export image
+        run: docker save trading-platform:${{ github.sha }} | gzip > trading-platform.tar.gz
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+      - name: Transfer image
+        env:
+          HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+          USER: ${{ secrets.PRODUCTION_SSH_USER }}
+        # Upload to the deploy user's home, not shared /tmp; the deploy step verifies its checksum.
+        run: scp trading-platform.tar.gz "$USER@$HOST:trading-platform.tar.gz"
+      - name: Deploy container
+        env:
+          HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+          USER: ${{ secrets.PRODUCTION_SSH_USER }}
+          API_KEY: ${{ secrets.EXCHANGE_API_KEY }}
+          API_SECRET: ${{ secrets.EXCHANGE_API_SECRET }}
+          SIGNING_SECRET: ${{ secrets.APPROVAL_SIGNING_SECRET }}
+          EXCHANGE_PASSWORD: ${{ secrets.EXCHANGE_PASSWORD }}
+          EXCHANGE_ID: ${{ vars.EXCHANGE_ID }}
+          LIVE_TRADING: ${{ vars.LIVE_TRADING }}
+        run: |
+          # Allowlist deploy variables so they cannot inject extra env-file lines.
+          case "$EXCHANGE_ID" in
+            binance|kraken|coinbase) ;;
+            *) echo "Invalid EXCHANGE_ID" >&2; exit 1 ;;
+          esac
+          case "$LIVE_TRADING" in
+            true|false) ;;
+            *) echo "Invalid LIVE_TRADING (must be true or false)" >&2; exit 1 ;;
+          esac
+          IMAGE_SHA=$(sha256sum trading-platform.tar.gz | cut -d' ' -f1)
+          case "$IMAGE_SHA" in
+            *[!0-9a-f]*|"") echo "Invalid image checksum" >&2; exit 1 ;;
+          esac
+          # Secrets travel over SSH stdin only; nothing is written to disk on the runner.
+          {
+            printf 'EXCHANGE_API_KEY=%s\n' "$API_KEY"
+            printf 'EXCHANGE_API_SECRET=%s\n' "$API_SECRET"
+            printf 'APPROVAL_SIGNING_SECRET=%s\n' "$SIGNING_SECRET"
+            if [ -n "$EXCHANGE_PASSWORD" ]; then
+              printf 'EXCHANGE_PASSWORD=%s\n' "$EXCHANGE_PASSWORD"
+            fi
+            printf 'EXCHANGE_ID=%s\n' "$EXCHANGE_ID"
+            printf 'LIVE_TRADING=%s\n' "$LIVE_TRADING"
+            printf 'PORT=8080\n'
+          } | ssh "$USER@$HOST" 'set -eu
+            umask 077
+            d=$(mktemp -d)
+            switched=0
+            cleanup() {
+              rc=$?
+              set +e
+              rm -rf "$d"
+              # Any failure after the old container was stopped: put it back and start it.
+              if [ "$rc" -ne 0 ] && [ "$switched" = 1 ]; then
+                echo "Deploy failed; restoring previous container" >&2
+                if docker container inspect trading-platform-prev >/dev/null 2>&1; then
+                  docker rm -f trading-platform 2>/dev/null
+                  docker rename trading-platform-prev trading-platform
+                fi
+                docker start trading-platform
+              fi
+              exit "$rc"
+            }
+            trap cleanup EXIT
+            cat > "$d/env"
+            # Move the image into the private dir first, then verify it: nobody else can swap it after the check.
+            mv "$HOME/trading-platform.tar.gz" "$d/image.tar.gz"
+            echo "'"$IMAGE_SHA"'  $d/image.tar.gz" | sha256sum -c --quiet -
+            docker load < "$d/image.tar.gz"
+            # Keep the previous container (stopped) for rollback; never force-kill an order in flight.
+            docker rm -f trading-platform-prev 2>/dev/null || true
+            if docker container inspect trading-platform >/dev/null 2>&1; then
+              switched=1
+              docker stop --time 60 trading-platform
+              docker rename trading-platform trading-platform-prev
+            fi
+            docker volume create trading-state >/dev/null
+            docker run -d --name trading-platform --restart unless-stopped --stop-timeout 60 -p 127.0.0.1:8080:8080 -v trading-state:/var/lib/trading --env-file "$d/env" trading-platform:${{ github.sha }}'
+      - name: Health check
+        env:
+          HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+          USER: ${{ secrets.PRODUCTION_SSH_USER }}
+        run: |
+          for i in $(seq 1 30); do
+            if ssh "$USER@$HOST" 'curl --fail --silent --show-error http://127.0.0.1:8080/readyz'; then
+              ssh "$USER@$HOST" 'docker rm -f trading-platform-prev 2>/dev/null || true'
+              exit 0
+            fi
+            sleep 2
+          done
+          ssh "$USER@$HOST" 'set -u
+            docker logs --tail 100 trading-platform
+            docker stop --time 60 trading-platform || true
+            docker rm -f trading-platform || true
+            if docker container inspect trading-platform-prev >/dev/null 2>&1; then
+              echo "Rolling back to previous container" >&2
+              docker rename trading-platform-prev trading-platform
+              docker start trading-platform
+            fi'
+          exit 1

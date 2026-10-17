@@ -81,7 +81,7 @@ def test_gate_rejects_expired_approval():
     expires = utcnow() - timedelta(seconds=10)
     digest = order_hash(p)
     nonce = "nonce"
-    signature = sign_approval(digest, "risk-v1", nonce, expires.isoformat(), SECRET)
+    signature = sign_approval(digest, "risk-v1", nonce, expires.isoformat(), Decimal("60"), SECRET)
     a = RiskApproval("a1", p.order_id, digest, p.quantity, Decimal("60"), "risk-v1", issued, expires, nonce, signature)
     with pytest.raises(ExecutionBlocked, match="APPROVAL_EXPIRED"):
         gate.execute(AuthorizedOrder(p, a))

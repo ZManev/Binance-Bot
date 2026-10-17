@@ -42,7 +42,7 @@ class RiskEngine:
         expires = issued + timedelta(seconds=self.limits.approval_ttl_seconds)
         nonce = uuid4().hex
         digest = order_hash(proposal)
-        signature = sign_approval(digest, self.policy_version, nonce, expires.isoformat(), self.signing_secret)
+        signature = sign_approval(digest, self.policy_version, nonce, expires.isoformat(), notional, self.signing_secret)
         return RiskApproval(
             approval_id=uuid4().hex,
             order_id=proposal.order_id,

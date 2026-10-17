@@ -11,9 +11,14 @@ class ExecutionBlocked(Exception):
     pass
 
 
+class PreSubmitRejection(Exception):
+    """Raised by an adapter when it rejects an order before contacting the exchange."""
+
+
 class IdempotencyStore(Protocol):
     def seen(self, order_id: str) -> bool: ...
     def mark(self, order_id: str) -> None: ...
+    def release(self, order_id: str) -> None: ...
 
 
 class KillSwitch(Protocol):
@@ -53,6 +58,7 @@ class ExecutionGate:
             approval.policy_version,
             approval.nonce,
             approval.expires_at.isoformat(),
+            approval.approved_notional,
             approval.signature,
             self.signing_secret,
         ):
@@ -61,4 +67,10 @@ class ExecutionGate:
             raise ExecutionBlocked("DUPLICATE_ORDER")
 
         self.idempotency.mark(proposal.order_id)
-        return self.adapter.submit(order)
+        try:
+            return self.adapter.submit(order)
+        except PreSubmitRejection:
+            # Rejected before any exchange request: release the reservation so a
+            # freshly approved retry is not blocked as a duplicate.
+            self.idempotency.release(proposal.order_id)
+            raise

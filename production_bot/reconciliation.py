@@ -1,0 +1,44 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from decimal import Decimal
+
+from .fills import FillEvent
+
+
+@dataclass(frozen=True)
+class ReconciliationResult:
+    execution_id: str
+    expected_quantity: Decimal
+    observed_quantity: Decimal
+    status: str
+    reason: str
+
+
+class Reconciler:
+    """Truth layer: only an exact, venue-observed full fill becomes RECONCILED."""
+
+    def reconcile(self, expected_quantity: Decimal, fill: FillEvent) -> ReconciliationResult:
+        observed = fill.executed_quantity
+        normalized_status = fill.status.lower()
+
+        if normalized_status in {"filled", "closed"} and observed == expected_quantity:
+            return ReconciliationResult(fill.execution_id, expected_quantity, observed, "RECONCILED", "EXACT_FILLED_QUANTITY")
+
+        if observed > expected_quantity:
+            # Overfill is never an authorized state, whatever the venue status says.
+            return ReconciliationResult(fill.execution_id, expected_quantity, observed, "MISMATCH", "OVERFILL")
+
+        if normalized_status in {"canceled", "cancelled", "rejected", "expired"}:
+            if observed == expected_quantity:
+                # Fully executed even though the venue reports a terminal non-fill status.
+                return ReconciliationResult(fill.execution_id, expected_quantity, observed, "FILLED_TERMINAL", f"{normalized_status.upper()}_AFTER_FULL_FILL")
+            if observed > Decimal("0"):
+                # Terminal, but some quantity executed: callers must account for it.
+                return ReconciliationResult(fill.execution_id, expected_quantity, observed, "PARTIAL_TERMINAL", f"{normalized_status.upper()}_AFTER_PARTIAL_FILL")
+            return ReconciliationResult(fill.execution_id, expected_quantity, observed, "REJECTED_OR_CANCELED", normalized_status.upper())
+
+        if observed > Decimal("0") and observed < expected_quantity:
+            return ReconciliationResult(fill.execution_id, expected_quantity, observed, "PARTIAL", "PARTIAL_EXECUTION")
+
+        return ReconciliationResult(fill.execution_id, expected_quantity, observed, "MISMATCH", "OBSERVED_RESULT_NOT_AUTHORIZED_STATE")
