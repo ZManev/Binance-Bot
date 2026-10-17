@@ -66,13 +66,30 @@ jobs:
           } | ssh "$USER@$HOST" 'set -eu
             umask 077
             d=$(mktemp -d)
-            trap "rm -rf \"$d\"" EXIT
+            switched=0
+            cleanup() {
+              rc=$?
+              set +e
+              rm -rf "$d"
+              # Any failure after the old container was stopped: put it back and start it.
+              if [ "$rc" -ne 0 ] && [ "$switched" = 1 ]; then
+                echo "Deploy failed; restoring previous container" >&2
+                if docker container inspect trading-platform-prev >/dev/null 2>&1; then
+                  docker rm -f trading-platform 2>/dev/null
+                  docker rename trading-platform-prev trading-platform
+                fi
+                docker start trading-platform
+              fi
+              exit "$rc"
+            }
+            trap cleanup EXIT
             cat > "$d/env"
             docker load < /tmp/trading-platform.tar.gz
             rm -f /tmp/trading-platform.tar.gz
             # Keep the previous container (stopped) for rollback; never force-kill an order in flight.
             docker rm -f trading-platform-prev 2>/dev/null || true
             if docker container inspect trading-platform >/dev/null 2>&1; then
+              switched=1
               docker stop --time 60 trading-platform
               docker rename trading-platform trading-platform-prev
             fi
