@@ -37,7 +37,17 @@ def order_hash(proposal: Any) -> str:
 
 def _canonical_decimal(value: Decimal) -> str:
     # "60", "60.0" and "60.000" must sign identically across serialization round-trips.
-    return format(Decimal(value).normalize(), "f")
+    # Exact: strips trailing zeros without Decimal.normalize(), which rounds to the
+    # context precision and would let distinct values share one signature.
+    value = Decimal(value)
+    if not value.is_finite():
+        raise ValueError("NON_FINITE_DECIMAL")
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    if text in ("-0", ""):
+        text = "0"
+    return text
 
 
 def approval_payload(order_digest: str, policy_version: str, nonce: str, expires_at: str, approved_notional: Decimal) -> bytes:

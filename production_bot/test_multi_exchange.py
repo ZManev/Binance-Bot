@@ -152,6 +152,7 @@ def test_adapter_submits_valid_approval():
     ({"expires_delta": timedelta(seconds=-1)}, "APPROVAL_EXPIRED"),
     ({"signature": "bad"}, "INVALID_APPROVAL_SIGNATURE"),
     ({"signed_notional": Decimal("60"), "notional": Decimal("1000000")}, "INVALID_APPROVAL_SIGNATURE"),
+    ({"signed_notional": Decimal("60"), "notional": Decimal("60.000000000000000000000000000001")}, "INVALID_APPROVAL_SIGNATURE"),
     ({"approved_quantity": Decimal("0.002")}, "APPROVED_QUANTITY_MISMATCH"),
     ({"approval_order_id": "other"}, "ORDER_ID_MISMATCH"),
     ({"approval_hash": "0" * 64}, "ORDER_HASH_MISMATCH"),
