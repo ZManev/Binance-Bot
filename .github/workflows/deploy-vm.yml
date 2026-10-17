@@ -40,11 +40,13 @@ jobs:
           API_KEY: ${{ secrets.EXCHANGE_API_KEY }}
           API_SECRET: ${{ secrets.EXCHANGE_API_SECRET }}
           SIGNING_SECRET: ${{ secrets.APPROVAL_SIGNING_SECRET }}
+          DASHBOARD_TOKEN: ${{ secrets.DASHBOARD_API_TOKEN }}
           EXCHANGE_PASSWORD: ${{ secrets.EXCHANGE_PASSWORD }}
           EXCHANGE_ID: ${{ vars.EXCHANGE_ID }}
           LIVE_TRADING: ${{ vars.LIVE_TRADING }}
         run: |
           # Allowlist deploy variables so they cannot inject extra env-file lines.
+          test -n "$DASHBOARD_TOKEN" || { echo "DASHBOARD_API_TOKEN secret is required" >&2; exit 1; }
           case "$EXCHANGE_ID" in
             binance|kraken|coinbase) ;;
             *) echo "Invalid EXCHANGE_ID" >&2; exit 1 ;;
