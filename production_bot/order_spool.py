@@ -89,9 +89,11 @@ class SpoolConsumer:
             raise FileExistsError(f"SPOOL_DESTINATION_EXISTS:{dest}")
         claimed.rename(dest)
 
-    def process_once(self) -> int:
+    def process_once(self, stop: Any = None) -> int:
         count = 0
         for path in sorted((self.root / "incoming").glob("*.json")):
+            if stop is not None and stop.is_set():
+                break  # shutting down: leave unclaimed files in incoming/
             original_name = path.name
             # Unique claim name so a reused incoming filename never replaces a file in processing/.
             claimed = self.root / "processing" / f"{uuid4().hex}.{original_name}"

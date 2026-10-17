@@ -39,6 +39,7 @@ jobs:
           API_KEY: ${{ secrets.EXCHANGE_API_KEY }}
           API_SECRET: ${{ secrets.EXCHANGE_API_SECRET }}
           SIGNING_SECRET: ${{ secrets.APPROVAL_SIGNING_SECRET }}
+          EXCHANGE_PASSWORD: ${{ secrets.EXCHANGE_PASSWORD }}
           EXCHANGE_ID: ${{ vars.EXCHANGE_ID }}
           LIVE_TRADING: ${{ vars.LIVE_TRADING }}
         run: |
@@ -56,6 +57,9 @@ jobs:
             printf 'EXCHANGE_API_KEY=%s\n' "$API_KEY"
             printf 'EXCHANGE_API_SECRET=%s\n' "$API_SECRET"
             printf 'APPROVAL_SIGNING_SECRET=%s\n' "$SIGNING_SECRET"
+            if [ -n "$EXCHANGE_PASSWORD" ]; then
+              printf 'EXCHANGE_PASSWORD=%s\n' "$EXCHANGE_PASSWORD"
+            fi
             printf 'EXCHANGE_ID=%s\n' "$EXCHANGE_ID"
             printf 'LIVE_TRADING=%s\n' "$LIVE_TRADING"
             printf 'PORT=8080\n'
@@ -66,7 +70,12 @@ jobs:
             cat > "$d/env"
             docker load < /tmp/trading-platform.tar.gz
             rm -f /tmp/trading-platform.tar.gz
-            docker rm -f trading-platform 2>/dev/null || true
+            # Keep the previous container (stopped) for rollback; never force-kill an order in flight.
+            docker rm -f trading-platform-prev 2>/dev/null || true
+            if docker container inspect trading-platform >/dev/null 2>&1; then
+              docker stop --time 60 trading-platform
+              docker rename trading-platform trading-platform-prev
+            fi
             docker volume create trading-state >/dev/null
             docker run -d --name trading-platform --restart unless-stopped -p 127.0.0.1:8080:8080 -v trading-state:/var/lib/trading --env-file "$d/env" trading-platform:${{ github.sha }}'
       - name: Health check
@@ -76,9 +85,18 @@ jobs:
         run: |
           for i in $(seq 1 30); do
             if ssh "$USER@$HOST" 'curl --fail --silent --show-error http://127.0.0.1:8080/readyz'; then
+              ssh "$USER@$HOST" 'docker rm -f trading-platform-prev 2>/dev/null || true'
               exit 0
             fi
             sleep 2
           done
-          ssh "$USER@$HOST" 'docker logs --tail 100 trading-platform'
+          ssh "$USER@$HOST" 'set -u
+            docker logs --tail 100 trading-platform
+            docker stop --time 60 trading-platform || true
+            docker rm -f trading-platform || true
+            if docker container inspect trading-platform-prev >/dev/null 2>&1; then
+              echo "Rolling back to previous container" >&2
+              docker rename trading-platform-prev trading-platform
+              docker start trading-platform
+            fi'
           exit 1

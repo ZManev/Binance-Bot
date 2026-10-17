@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import signal
 import sqlite3
 import threading
 import time
@@ -107,7 +108,7 @@ def build(state: ServiceState, env=os.environ) -> SpoolConsumer:
 def run_loop(state: ServiceState, consumer: SpoolConsumer, stop: threading.Event) -> None:
     while not stop.is_set():
         try:
-            consumer.process_once()
+            consumer.process_once(stop)
             state.last_poll = time.time()
         except Exception as exc:  # keep serving health; readiness goes stale
             state.error = type(exc).__name__
@@ -129,7 +130,12 @@ def main() -> None:
         threading.Event().wait()
         return
     log.info("execution service started exchange=%s mode=%s", state.exchange_id, "live" if state.live else "sandbox")
-    run_loop(state, consumer, threading.Event())
+    stop = threading.Event()
+    # docker stop sends SIGTERM: finish the order in flight, then exit before claiming another.
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    run_loop(state, consumer, stop)
+    log.info("execution service stopped")
 
 
 if __name__ == "__main__":
