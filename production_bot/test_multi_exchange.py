@@ -238,3 +238,14 @@ def test_reconciliation_does_not_claim_success_for_partial():
     )
     result = Reconciler().reconcile(Decimal("0.001"), fill)
     assert result.status == "PARTIAL"
+
+
+@pytest.mark.parametrize("status", ["filled", "closed"])
+def test_underfilled_order_reported_filled_is_not_reconciled(status):
+    fill = FillEvent(
+        "exec-7", "binance", "460", "BTC/USDT", "buy",
+        Decimal("1"), Decimal("0.4"), None, None, None, status, {}
+    )
+    result = Reconciler().reconcile(Decimal("1"), fill)
+    assert result.status == "PARTIAL"
+    assert result.reason == "PARTIAL_EXECUTION"

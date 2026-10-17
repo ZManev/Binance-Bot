@@ -99,6 +99,18 @@ def test_expired_and_malformed_orders_are_rejected(tmp_path):
     assert (consumer.root / "rejected" / "b.json").exists()
 
 
+def test_tampered_notional_in_spool_file_is_rejected(tmp_path):
+    consumer, adapter = _consumer(tmp_path)
+    payload = _payload()
+    payload["approval"]["approved_notional"] = "1000000"  # signed for 60
+    _drop(consumer, "a.json", payload)
+    consumer.process_once()
+    assert adapter.calls == []
+    assert (consumer.root / "rejected" / "a.json").exists()
+    result = json.loads((consumer.root / "rejected" / "a.result.json").read_text())
+    assert result["error"] == "INVALID_APPROVAL_SIGNATURE"
+
+
 def test_kill_switch_file_blocks_execution(tmp_path):
     flag = tmp_path / "KILL"
     flag.write_text("")
