@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from .execution_store import FileKillSwitch, SqliteIdempotencyStore
 from .gate import ExecutionGate
+from .multi_exchange import CcxtExchangeAdapter, ExchangeCredentials
 from .order_spool import SpoolConsumer
 from .security import order_hash, sign_approval
 from .service import ServiceState, build
@@ -55,6 +56,42 @@ def _consumer(tmp_path, kill=None):
 
 def _drop(consumer, name, payload):
     (consumer.root / "incoming" / name).write_text(json.dumps(payload))
+
+
+def test_limit_without_price_is_rejected_and_releases_reservation(tmp_path):
+    class Exchange:
+        def __init__(self):
+            self.calls = []
+
+        def create_order(self, *args):
+            self.calls.append(args)
+            return {"id": "x"}
+
+    class Creds:
+        def get(self, exchange_id):
+            return ExchangeCredentials("k", "s")
+
+    adapter = CcxtExchangeAdapter("binance", Creds(), SECRET, kill_switch=Kill())
+    adapter.exchange = Exchange()
+    store = SqliteIdempotencyStore(str(tmp_path / "db.sqlite3"))
+    consumer = SpoolConsumer(ExecutionGate(adapter, store, Kill(), SECRET), str(tmp_path / "spool"))
+
+    proposal = TradeProposal("o1", "acct", "BTC/USDT", "buy", Decimal("0.001"), "limit", None, exchange="binance")
+    digest = order_hash(proposal)
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat()
+    payload = _payload()
+    payload["proposal"]["order_type"] = "limit"
+    payload["approval"]["order_hash"] = digest
+    payload["approval"]["expires_at"] = expires_at
+    payload["approval"]["signature"] = sign_approval(digest, "v1", "n1", expires_at, Decimal("60"), SECRET)
+    _drop(consumer, "a.json", payload)
+
+    consumer.process_once()
+
+    assert adapter.exchange.calls == []
+    result = json.loads((consumer.root / "rejected" / "a.result.json").read_text())
+    assert result["error"] == "LIMIT_ORDER_REQUIRES_PRICE"
+    assert not store.seen("o1")  # a corrected retry is not blocked as DUPLICATE_ORDER
 
 
 def test_valid_order_is_executed_once(tmp_path):
