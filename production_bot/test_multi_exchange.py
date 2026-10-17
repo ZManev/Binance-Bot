@@ -125,12 +125,16 @@ def _adapter(kill_switch=None, **fake):
 def _order(
     expires_delta=timedelta(minutes=1), signature=None, approved_quantity=Decimal("0.001"),
     exchange="binance", order_type="market", price=None, notional=Decimal("60"),
-    approval_order_id="o1", approval_hash=None,
+    approval_order_id="o1", approval_hash=None, signed_notional=None,
 ):
     proposal = TradeProposal("o1", "acct", "BTC/USDT", "buy", Decimal("0.001"), order_type, price, exchange=exchange)
     digest = order_hash(proposal)
     expires_at = datetime.now(timezone.utc) + expires_delta
-    sig = signature or sign_approval(digest, "v1", "n1", expires_at.isoformat(), notional, SECRET)
+    # signed_notional lets a test sign one notional and store another (tampering).
+    sig = signature or sign_approval(
+        digest, "v1", "n1", expires_at.isoformat(),
+        notional if signed_notional is None else signed_notional, SECRET,
+    )
     approval = RiskApproval(
         "a1", approval_order_id, approval_hash or digest, approved_quantity, notional, "v1",
         datetime.now(timezone.utc), expires_at, "n1", sig,
@@ -147,6 +151,7 @@ def test_adapter_submits_valid_approval():
 @pytest.mark.parametrize("kwargs,reason", [
     ({"expires_delta": timedelta(seconds=-1)}, "APPROVAL_EXPIRED"),
     ({"signature": "bad"}, "INVALID_APPROVAL_SIGNATURE"),
+    ({"signed_notional": Decimal("60"), "notional": Decimal("1000000")}, "INVALID_APPROVAL_SIGNATURE"),
     ({"approved_quantity": Decimal("0.002")}, "APPROVED_QUANTITY_MISMATCH"),
     ({"approval_order_id": "other"}, "ORDER_ID_MISMATCH"),
     ({"approval_hash": "0" * 64}, "ORDER_HASH_MISMATCH"),
