@@ -6,6 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from .gate import ExecutionBlocked, ExecutionGate, PreSubmitRejection
 from .models import AuthorizedOrder, RiskApproval, TradeProposal
@@ -64,14 +65,28 @@ class SpoolConsumer:
         for name in self.BUCKETS:
             (self.root / name).mkdir(parents=True, exist_ok=True)
 
-    def _finish(self, claimed: Path, bucket: str, result: dict[str, Any]) -> None:
-        (self.root / bucket / (claimed.stem + ".result.json")).write_text(json.dumps(result, default=str))
-        claimed.rename(self.root / bucket / claimed.name)
+    def _finish(self, claimed: Path, original_name: str, bucket: str, result: dict[str, Any]) -> None:
+        # Never overwrite an earlier order's record: on a name collision, add a unique suffix.
+        stem = Path(original_name).stem
+        dest_dir = self.root / bucket
+        while True:
+            try:
+                with open(dest_dir / (stem + ".result.json"), "x") as fh:
+                    fh.write(json.dumps(result, default=str))
+                break
+            except FileExistsError:
+                stem = f"{Path(original_name).stem}.{uuid4().hex}"
+        dest = dest_dir / (stem + ".json")
+        if dest.exists():
+            raise FileExistsError(f"SPOOL_DESTINATION_EXISTS:{dest}")
+        claimed.rename(dest)
 
     def process_once(self) -> int:
         count = 0
         for path in sorted((self.root / "incoming").glob("*.json")):
-            claimed = self.root / "processing" / path.name
+            original_name = path.name
+            # Unique claim name so a reused incoming filename never replaces a file in processing/.
+            claimed = self.root / "processing" / f"{uuid4().hex}.{original_name}"
             try:
                 path.rename(claimed)
             except FileNotFoundError:
@@ -80,18 +95,18 @@ class SpoolConsumer:
             try:
                 order = parse_order(json.loads(claimed.read_text()))
             except Exception as exc:  # malformed input never reaches the gate
-                self._finish(claimed, "rejected", {"error": f"MALFORMED_ORDER:{type(exc).__name__}"})
+                self._finish(claimed, original_name, "rejected", {"error": f"MALFORMED_ORDER:{type(exc).__name__}"})
                 continue
             order_id = order.proposal.order_id
             try:
                 response = self.gate.execute(order)
             except (ExecutionBlocked, PreSubmitRejection) as exc:
                 log.warning("order %s rejected: %s", order_id, exc)
-                self._finish(claimed, "rejected", {"order_id": order_id, "error": str(exc)})
+                self._finish(claimed, original_name, "rejected", {"order_id": order_id, "error": str(exc)})
             except Exception as exc:
                 # The exchange may have received the request: the reservation is kept.
                 log.error("order %s outcome unknown: %s", order_id, type(exc).__name__)
-                self._finish(claimed, "unknown", {"order_id": order_id, "error": type(exc).__name__})
+                self._finish(claimed, original_name, "unknown", {"order_id": order_id, "error": type(exc).__name__})
             else:
-                self._finish(claimed, "done", {"order_id": order_id, "exchange_response": response})
+                self._finish(claimed, original_name, "done", {"order_id": order_id, "exchange_response": response})
         return count
