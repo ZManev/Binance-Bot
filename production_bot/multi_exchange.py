@@ -7,11 +7,12 @@ from datetime import datetime, timezone
 
 import ccxt
 
+from .gate import PreSubmitRejection
 from .models import AuthorizedOrder
 from .security import order_hash, verify_approval
 
 
-class UnauthorizedOrder(Exception):
+class UnauthorizedOrder(PreSubmitRejection):
     pass
 
 
