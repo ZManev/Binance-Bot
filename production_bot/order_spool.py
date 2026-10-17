@@ -33,6 +33,7 @@ def parse_order(data: dict[str, Any]) -> AuthorizedOrder:
         price=Decimal(str(p["price"])) if p.get("price") is not None else None,
         strategy_id=p.get("strategy_id", "unknown"),
         strategy_version=p.get("strategy_version", "unknown"),
+        exchange=p.get("exchange", ""),
     )
     approval = RiskApproval(
         approval_id=a["approval_id"],

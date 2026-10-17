@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 
 from .fills import FillEvent
-from .gate import ExecutionGate
+from .gate import ExecutionGate, PreSubmitRejection
 from .models import AuthorizedOrder, RiskApproval, TradeProposal
 from .multi_exchange import CcxtExchangeAdapter, ExchangeCredentials, UnauthorizedOrder
 from .reconciliation import Reconciler
@@ -89,27 +89,35 @@ def test_canceled_unfilled_order_is_rejected_or_canceled():
 
 
 class FakeExchange:
-    def __init__(self):
+    def __init__(self, ask=50000, bid=49990):
         self.calls = []
+        self.ticker = {"ask": ask, "bid": bid, "last": ask}
+
+    def fetch_ticker(self, symbol):
+        return self.ticker
 
     def create_order(self, *args):
         self.calls.append(args)
         return {"id": "x"}
 
 
-def _adapter():
-    adapter = CcxtExchangeAdapter("binance", StaticCredentials(), SECRET)
-    adapter.exchange = FakeExchange()
+def _adapter(kill_switch=None, **fake):
+    adapter = CcxtExchangeAdapter("binance", StaticCredentials(), SECRET, kill_switch=kill_switch)
+    adapter.exchange = FakeExchange(**fake)
     return adapter
 
 
-def _order(expires_delta=timedelta(minutes=1), signature=None, approved_quantity=Decimal("0.001")):
-    proposal = TradeProposal("o1", "acct", "BTC/USDT", "buy", Decimal("0.001"))
+def _order(
+    expires_delta=timedelta(minutes=1), signature=None, approved_quantity=Decimal("0.001"),
+    exchange="binance", order_type="market", price=None, notional=Decimal("60"),
+    approval_order_id="o1", approval_hash=None,
+):
+    proposal = TradeProposal("o1", "acct", "BTC/USDT", "buy", Decimal("0.001"), order_type, price, exchange=exchange)
     digest = order_hash(proposal)
     expires_at = datetime.now(timezone.utc) + expires_delta
     sig = signature or sign_approval(digest, "v1", "n1", expires_at.isoformat(), SECRET)
     approval = RiskApproval(
-        "a1", "o1", digest, approved_quantity, Decimal("60"), "v1",
+        "a1", approval_order_id, approval_hash or digest, approved_quantity, notional, "v1",
         datetime.now(timezone.utc), expires_at, "n1", sig,
     )
     return AuthorizedOrder(proposal, approval)
@@ -125,11 +133,48 @@ def test_adapter_submits_valid_approval():
     ({"expires_delta": timedelta(seconds=-1)}, "APPROVAL_EXPIRED"),
     ({"signature": "bad"}, "INVALID_APPROVAL_SIGNATURE"),
     ({"approved_quantity": Decimal("0.002")}, "APPROVED_QUANTITY_MISMATCH"),
+    ({"approval_order_id": "other"}, "ORDER_ID_MISMATCH"),
+    ({"approval_hash": "0" * 64}, "ORDER_HASH_MISMATCH"),
+    ({"exchange": "kraken"}, "EXCHANGE_MISMATCH"),
+    ({"exchange": ""}, "EXCHANGE_MISMATCH"),
+    ({"notional": Decimal("10")}, "APPROVED_NOTIONAL_EXCEEDED"),
+    ({"order_type": "limit", "price": Decimal("70000")}, "APPROVED_NOTIONAL_EXCEEDED"),
 ])
 def test_adapter_rejects_invalid_approval(kwargs, reason):
     adapter = _adapter()
     with pytest.raises(UnauthorizedOrder, match=reason):
         adapter.submit(_order(**kwargs))
+    assert adapter.exchange.calls == []
+
+
+def test_adapter_submits_priced_limit_order():
+    adapter = _adapter()
+    adapter.submit(_order(order_type="limit", price=Decimal("55000")))
+    assert adapter.exchange.calls == [("BTC/USDT", "limit", "buy", 0.001, 55000.0)]
+
+
+def test_limit_without_price_is_pre_submit_rejection():
+    adapter = _adapter()
+    with pytest.raises(PreSubmitRejection, match="LIMIT_ORDER_REQUIRES_PRICE"):
+        adapter.submit(_order(order_type="limit", price=None))
+    assert adapter.exchange.calls == []
+
+
+def test_market_order_without_quote_is_rejected():
+    adapter = _adapter(ask=None, bid=None)
+    adapter.exchange.ticker["last"] = None
+    with pytest.raises(PreSubmitRejection, match="NO_REFERENCE_PRICE"):
+        adapter.submit(_order())
+    assert adapter.exchange.calls == []
+
+
+def test_adapter_honours_kill_switch_on_direct_call():
+    class On:
+        def active(self, *a): return True
+
+    adapter = _adapter(kill_switch=On())
+    with pytest.raises(UnauthorizedOrder, match="KILL_SWITCH_ACTIVE"):
+        adapter.submit(_order())
     assert adapter.exchange.calls == []
 
 

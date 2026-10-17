@@ -91,13 +91,13 @@ def build(state: ServiceState, env=os.environ) -> SpoolConsumer:
     state.exchange_id, state.live = exchange_id, live
     state.checks["config"] = True
 
-    adapter = CcxtExchangeAdapter(exchange_id, EnvCredentials(), signing_secret, sandbox=not live)
+    state.kill_switch = FileKillSwitch(env.get("KILL_SWITCH_FILE", "/var/lib/trading/KILL"))
+    adapter = CcxtExchangeAdapter(exchange_id, EnvCredentials(), signing_secret, sandbox=not live, kill_switch=state.kill_switch)
     state.checks["adapter"] = True
 
     state.store = SqliteIdempotencyStore(env.get("STATE_DB", "/var/lib/trading/idempotency.sqlite3"))
     state.checks["idempotency_store"] = True
 
-    state.kill_switch = FileKillSwitch(env.get("KILL_SWITCH_FILE", "/var/lib/trading/KILL"))
     gate = ExecutionGate(adapter, state.store, state.kill_switch, signing_secret)
     consumer = SpoolConsumer(gate, env.get("SPOOL_DIR", "/var/lib/trading/spool"))
     state.checks["consumer"] = True
