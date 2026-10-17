@@ -73,8 +73,19 @@ def test_canceled_partial_fill_is_terminal():
         Decimal("1"), Decimal("0.4"), None, None, None, "canceled", {}
     )
     result = Reconciler().reconcile(Decimal("1"), fill)
-    assert result.status == "REJECTED_OR_CANCELED"
+    assert result.status == "PARTIAL_TERMINAL"
+    assert result.reason == "CANCELED_AFTER_PARTIAL_FILL"
     assert result.observed_quantity == Decimal("0.4")
+
+
+def test_canceled_unfilled_order_is_rejected_or_canceled():
+    fill = FillEvent(
+        "exec-5", "kraken", "458", "BTC/USD", "buy",
+        Decimal("1"), Decimal("0"), None, None, None, "canceled", {}
+    )
+    result = Reconciler().reconcile(Decimal("1"), fill)
+    assert result.status == "REJECTED_OR_CANCELED"
+    assert result.reason == "CANCELED"
 
 
 class FakeExchange:

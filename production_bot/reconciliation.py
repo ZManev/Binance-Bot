@@ -26,6 +26,9 @@ class Reconciler:
             return ReconciliationResult(fill.execution_id, expected_quantity, observed, "RECONCILED", "EXACT_FILLED_QUANTITY")
 
         if normalized_status in {"canceled", "cancelled", "rejected", "expired"}:
+            if observed > Decimal("0"):
+                # Terminal, but some quantity executed: callers must account for it.
+                return ReconciliationResult(fill.execution_id, expected_quantity, observed, "PARTIAL_TERMINAL", f"{normalized_status.upper()}_AFTER_PARTIAL_FILL")
             return ReconciliationResult(fill.execution_id, expected_quantity, observed, "REJECTED_OR_CANCELED", normalized_status.upper())
 
         if observed > Decimal("0") and observed < expected_quantity:
