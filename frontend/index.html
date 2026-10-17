@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trading Execution Control</title>
+<style>
+:root{color-scheme:dark;font:15px system-ui,sans-serif;background:#0b1220;color:#e5edf8}*{box-sizing:border-box}body{margin:0}header{padding:24px max(20px,calc((100vw - 1100px)/2));border-bottom:1px solid #26344b;background:#101a2b}main{max-width:1100px;margin:24px auto;padding:0 20px}.muted{color:#9aabc2}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.card{background:#111d30;border:1px solid #26344b;border-radius:12px;padding:18px;margin-bottom:14px}.value{font-size:25px;font-weight:700;margin-top:8px}input,button{font:inherit;border-radius:8px;padding:10px;border:1px solid #354862;background:#0b1220;color:#e5edf8}input{width:100%}button{cursor:pointer;background:#203b61}button:hover{background:#2b507e}.toolbar{display:flex;gap:8px;flex-wrap:wrap}.toolbar input{max-width:420px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border-bottom:1px solid #26344b;overflow-wrap:anywhere}.scroll{overflow:auto}.pill{padding:3px 8px;border-radius:999px;background:#24364c}#message{min-height:24px;margin:8px 0}h1{margin:0 0 5px;font-size:24px}h2{font-size:18px;margin:0 0 14px}@media(max-width:600px){th,td{padding:7px;font-size:13px}}
+</style></head>
+<body>
+<header><h1>Trading Execution Control</h1><div class="muted">Frontend → authenticated backend API → approved-order spool → execution gate</div></header>
+<main>
+<section class="card"><h2>Backend connection</h2><p class="muted">Enter the dashboard API token configured by the operator. The token is kept only in this browser tab's memory.</p><div class="toolbar"><input id="token" type="password" autocomplete="off" placeholder="Bearer token (token only)"><button id="connect">Connect</button><button id="refresh">Refresh</button></div><div id="message" role="status"></div></section>
+<section class="grid">
+<div class="card"><div class="muted">Backend</div><div class="value" id="backend">Disconnected</div></div>
+<div class="card"><div class="muted">Mode</div><div class="value" id="mode">—</div></div>
+<div class="card"><div class="muted">Kill switch</div><div class="value" id="kill">—</div></div>
+<div class="card"><div class="muted">Queued</div><div class="value" id="queued">—</div></div>
+</section>
+<section class="card"><h2>Execution queue</h2><div class="grid" id="queues"></div></section>
+<section class="card"><h2>Recent execution records</h2><p class="muted">Records are summaries from the backend spool. They are not proof of reconciliation unless the backend explicitly records reconciliation evidence.</p><div class="scroll"><table><thead><tr><th>Order ID</th><th>Result</th><th>Symbol</th><th>Exchange ID</th><th>Status</th><th>Filled</th><th>Error</th></tr></thead><tbody id="orders"><tr><td colspan="7">Connect to the backend to load records.</td></tr></tbody></table></div></section>
+<section class="card"><h2>Safety boundary</h2><p>Dashboard does not create risk approvals, sign authorizations, or bypass the execution gate. Order submission is disabled in this UI until a dedicated risk/approval workflow is implemented. Live trading must remain disabled until testnet E2E and operator review pass.</p></section>
+</main>
+<script>
+let token="";
+const $=id=>document.getElementById(id);
+function msg(s){$("message").textContent=s}
+async function api(path){const r=await fetch(path,{headers:{Authorization:"Bearer "+token}});let data={};try{data=await r.json()}catch{}if(!r.ok)throw new Error(data.detail||("HTTP "+r.status));return data}
+async function refresh(){if(!token){msg("Enter the API token first.");return}try{const s=await api("/api/status");$("backend").textContent="Connected";$("mode").textContent=s.mode.toUpperCase();$("kill").textContent=s.kill_switch_active?"ACTIVE":"NOT ACTIVE";$("queued").textContent=s.queue_counts.incoming??0;$("queues").innerHTML=Object.entries(s.queue_counts).map(([k,v])=>'<div class="card"><div class="muted">'+k+'</div><div class="value">'+v+'</div></div>').join("");const o=await api("/api/orders");$("orders").innerHTML=o.orders.length?o.orders.map(x=>'<tr><td>'+esc(x.order_id)+'</td><td><span class="pill">'+esc(x.bucket)+'</span></td><td>'+esc(x.symbol||"—")+'</td><td>'+esc(x.exchange_order_id||"—")+'</td><td>'+esc(x.status||"—")+'</td><td>'+esc(x.filled??"—")+'</td><td>'+esc(x.error||"—")+'</td></tr>').join(""):'<tr><td colspan="7">No execution records yet.</td></tr>';msg("Dashboard refreshed.");}catch(e){$("backend").textContent="Unavailable";msg("Connection failed: "+e.message)}}
+function esc(v){return String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+$("connect").onclick=()=>{token=$("token").value.trim();refresh()};$("refresh").onclick=refresh;
+</script></body></html>
