@@ -76,7 +76,7 @@ class CcxtExchangeAdapter:
             raise UnauthorizedOrder("APPROVAL_EXPIRED")
         if a.approved_quantity != p.quantity:
             raise UnauthorizedOrder("APPROVED_QUANTITY_MISMATCH")
-        if not verify_approval(digest, a.policy_version, a.nonce, a.expires_at.isoformat(), a.signature, self._signing_secret):
+        if not verify_approval(digest, a.policy_version, a.nonce, a.expires_at.isoformat(), a.approved_notional, a.signature, self._signing_secret):
             raise UnauthorizedOrder("INVALID_APPROVAL_SIGNATURE")
         if self._kill_switch is not None and self._kill_switch.active(p.account_id, p.symbol, p.strategy_id):
             raise UnauthorizedOrder("KILL_SWITCH_ACTIVE")

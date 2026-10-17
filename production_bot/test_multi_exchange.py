@@ -130,7 +130,7 @@ def _order(
     proposal = TradeProposal("o1", "acct", "BTC/USDT", "buy", Decimal("0.001"), order_type, price, exchange=exchange)
     digest = order_hash(proposal)
     expires_at = datetime.now(timezone.utc) + expires_delta
-    sig = signature or sign_approval(digest, "v1", "n1", expires_at.isoformat(), SECRET)
+    sig = signature or sign_approval(digest, "v1", "n1", expires_at.isoformat(), notional, SECRET)
     approval = RiskApproval(
         "a1", approval_order_id, approval_hash or digest, approved_quantity, notional, "v1",
         datetime.now(timezone.utc), expires_at, "n1", sig,

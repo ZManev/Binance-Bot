@@ -40,7 +40,7 @@ def _payload(order_id="o1", expires_delta=timedelta(minutes=1)):
             "approval_id": "a1", "order_id": order_id, "order_hash": digest,
             "approved_quantity": "0.001", "approved_notional": "60", "policy_version": "v1",
             "issued_at": datetime.now(timezone.utc).isoformat(), "expires_at": expires_at,
-            "nonce": "n1", "signature": sign_approval(digest, "v1", "n1", expires_at, SECRET),
+            "nonce": "n1", "signature": sign_approval(digest, "v1", "n1", expires_at, Decimal("60"), SECRET),
         },
     }
 

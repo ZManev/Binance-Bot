@@ -35,15 +35,20 @@ def order_hash(proposal: Any) -> str:
     return hashlib.sha256(canonical_order(proposal)).hexdigest()
 
 
-def approval_payload(order_digest: str, policy_version: str, nonce: str, expires_at: str) -> bytes:
-    return f"{order_digest}|{policy_version}|{nonce}|{expires_at}".encode()
+def _canonical_decimal(value: Decimal) -> str:
+    # "60", "60.0" and "60.000" must sign identically across serialization round-trips.
+    return format(Decimal(value).normalize(), "f")
 
 
-def sign_approval(order_digest: str, policy_version: str, nonce: str, expires_at: str, signing_secret: bytes) -> str:
-    payload = approval_payload(order_digest, policy_version, nonce, expires_at)
+def approval_payload(order_digest: str, policy_version: str, nonce: str, expires_at: str, approved_notional: Decimal) -> bytes:
+    return f"{order_digest}|{policy_version}|{nonce}|{expires_at}|{_canonical_decimal(approved_notional)}".encode()
+
+
+def sign_approval(order_digest: str, policy_version: str, nonce: str, expires_at: str, approved_notional: Decimal, signing_secret: bytes) -> str:
+    payload = approval_payload(order_digest, policy_version, nonce, expires_at, approved_notional)
     return hmac.new(signing_secret, payload, hashlib.sha256).hexdigest()
 
 
-def verify_approval(order_digest: str, policy_version: str, nonce: str, expires_at: str, signature: str, signing_secret: bytes) -> bool:
-    expected = sign_approval(order_digest, policy_version, nonce, expires_at, signing_secret)
+def verify_approval(order_digest: str, policy_version: str, nonce: str, expires_at: str, approved_notional: Decimal, signature: str, signing_secret: bytes) -> bool:
+    expected = sign_approval(order_digest, policy_version, nonce, expires_at, approved_notional, signing_secret)
     return hmac.compare_digest(expected, signature)

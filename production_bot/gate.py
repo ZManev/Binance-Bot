@@ -58,6 +58,7 @@ class ExecutionGate:
             approval.policy_version,
             approval.nonce,
             approval.expires_at.isoformat(),
+            approval.approved_notional,
             approval.signature,
             self.signing_secret,
         ):
