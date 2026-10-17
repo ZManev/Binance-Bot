@@ -32,43 +32,34 @@ jobs:
           HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
           USER: ${{ secrets.PRODUCTION_SSH_USER }}
         run: scp trading-platform.tar.gz "$USER@$HOST:/tmp/trading-platform.tar.gz"
-      - name: Transfer exchange secrets
+      - name: Deploy container
         env:
           HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
           USER: ${{ secrets.PRODUCTION_SSH_USER }}
           API_KEY: ${{ secrets.EXCHANGE_API_KEY }}
           API_SECRET: ${{ secrets.EXCHANGE_API_SECRET }}
           SIGNING_SECRET: ${{ secrets.APPROVAL_SIGNING_SECRET }}
+          EXCHANGE_ID: ${{ vars.EXCHANGE_ID }}
+          LIVE_TRADING: ${{ vars.LIVE_TRADING }}
         run: |
-          printf '%s\n' "$API_KEY" > /tmp/exchange_api_key
-          printf '%s\n' "$API_SECRET" > /tmp/exchange_api_secret
-          printf '%s\n' "$SIGNING_SECRET" > /tmp/approval_signing_secret
-          scp /tmp/exchange_api_key "$USER@$HOST:/tmp/exchange_api_key"
-          scp /tmp/exchange_api_secret "$USER@$HOST:/tmp/exchange_api_secret"
-          scp /tmp/approval_signing_secret "$USER@$HOST:/tmp/approval_signing_secret"
-          rm -f /tmp/exchange_api_key /tmp/exchange_api_secret /tmp/approval_signing_secret
-      - name: Deploy container
-        env:
-          HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
-          USER: ${{ secrets.PRODUCTION_SSH_USER }}
-        run: |
-          ssh "$USER@$HOST" 'set -eu
+          # Secrets travel over SSH stdin only; nothing is written to disk on the runner.
+          {
+            printf 'EXCHANGE_API_KEY=%s\n' "$API_KEY"
+            printf 'EXCHANGE_API_SECRET=%s\n' "$API_SECRET"
+            printf 'APPROVAL_SIGNING_SECRET=%s\n' "$SIGNING_SECRET"
+            printf 'EXCHANGE_ID=%s\n' "$EXCHANGE_ID"
+            printf 'LIVE_TRADING=%s\n' "$LIVE_TRADING"
+            printf 'PORT=8080\n'
+          } | ssh "$USER@$HOST" 'set -eu
+            umask 077
+            d=$(mktemp -d)
+            trap "rm -rf \"$d\"" EXIT
+            cat > "$d/env"
             docker load < /tmp/trading-platform.tar.gz
+            rm -f /tmp/trading-platform.tar.gz
             docker rm -f trading-platform 2>/dev/null || true
-            printf "EXCHANGE_API_KEY=" > /tmp/exchange_env
-            cat /tmp/exchange_api_key >> /tmp/exchange_env
-            printf "EXCHANGE_API_SECRET=" >> /tmp/exchange_env
-            cat /tmp/exchange_api_secret >> /tmp/exchange_env
-            printf "APPROVAL_SIGNING_SECRET=" >> /tmp/exchange_env
-            cat /tmp/approval_signing_secret >> /tmp/exchange_env
-            printf "EXCHANGE_ID=${{ vars.EXCHANGE_ID }}\n" >> /tmp/exchange_env
-            printf "LIVE_TRADING=${{ vars.LIVE_TRADING }}\n" >> /tmp/exchange_env
-            printf "PORT=8080\n" >> /tmp/exchange_env
-            chmod 600 /tmp/exchange_env
-            rm -f /tmp/exchange_api_key /tmp/exchange_api_secret /tmp/approval_signing_secret /tmp/trading-platform.tar.gz
             docker volume create trading-state >/dev/null
-            docker run -d --name trading-platform --restart unless-stopped -p 127.0.0.1:8080:8080 -v trading-state:/var/lib/trading --env-file /tmp/exchange_env trading-platform:${{ github.sha }}
-            rm -f /tmp/exchange_env'
+            docker run -d --name trading-platform --restart unless-stopped -p 127.0.0.1:8080:8080 -v trading-state:/var/lib/trading --env-file "$d/env" trading-platform:${{ github.sha }}'
       - name: Health check
         env:
           HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
