@@ -18,13 +18,23 @@ class StaticCredentials:
         return ExchangeCredentials("key", "secret")
 
 
+class Off:
+    def active(self, *a):
+        return False
+
+
 def test_supported_exchanges_are_explicit():
     assert {"binance", "kraken", "coinbase"} == CcxtExchangeAdapter.SUPPORTED
 
 
 def test_unknown_exchange_is_rejected_before_credentials():
     with pytest.raises(ValueError, match="UNSUPPORTED_EXCHANGE"):
-        CcxtExchangeAdapter("unknown", StaticCredentials(), b"secret", sandbox=True)
+        CcxtExchangeAdapter("unknown", StaticCredentials(), b"secret", sandbox=True, kill_switch=Off())
+
+
+def test_adapter_requires_kill_switch():
+    with pytest.raises(ValueError, match="KILL_SWITCH_REQUIRED"):
+        CcxtExchangeAdapter("binance", StaticCredentials(), b"secret", kill_switch=None)
 
 
 def test_fill_event_normalizes_exchange_response():
@@ -117,7 +127,7 @@ class FakeExchange:
 
 
 def _adapter(kill_switch=None, **fake):
-    adapter = CcxtExchangeAdapter("binance", StaticCredentials(), SECRET, kill_switch=kill_switch)
+    adapter = CcxtExchangeAdapter("binance", StaticCredentials(), SECRET, kill_switch=kill_switch or Off())
     adapter.exchange = FakeExchange(**fake)
     return adapter
 
@@ -197,6 +207,14 @@ def test_quote_fetch_failure_is_pre_submit_rejection():
 
     adapter.exchange.fetch_ticker = boom
     with pytest.raises(PreSubmitRejection, match="REFERENCE_PRICE_UNAVAILABLE:ConnectionError"):
+        adapter.submit(_order())
+    assert adapter.exchange.calls == []
+
+
+def test_unexpected_pre_submit_error_is_pre_submit_rejection():
+    adapter = _adapter()
+    adapter.exchange.fetch_ticker = lambda symbol: None  # malformed ticker -> AttributeError
+    with pytest.raises(PreSubmitRejection, match="PRE_SUBMIT_ERROR:AttributeError"):
         adapter.submit(_order())
     assert adapter.exchange.calls == []
 

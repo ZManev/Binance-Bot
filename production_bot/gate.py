@@ -72,7 +72,5 @@ class ExecutionGate:
         except PreSubmitRejection:
             # Rejected before any exchange request: release the reservation so a
             # freshly approved retry is not blocked as a duplicate.
-            release = getattr(self.idempotency, "release", None)
-            if release is not None:
-                release(proposal.order_id)
+            self.idempotency.release(proposal.order_id)
             raise

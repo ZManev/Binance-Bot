@@ -43,11 +43,13 @@ class CcxtExchangeAdapter:
 
     SUPPORTED = frozenset({"binance", "kraken", "coinbase"})
 
-    def __init__(self, exchange_id: str, credentials: ExchangeCredentialProvider, signing_secret: bytes, sandbox: bool = False, kill_switch: Any = None) -> None:
+    def __init__(self, exchange_id: str, credentials: ExchangeCredentialProvider, signing_secret: bytes, *, sandbox: bool = False, kill_switch: Any) -> None:
         if exchange_id not in self.SUPPORTED:
             raise ValueError(f"UNSUPPORTED_EXCHANGE:{exchange_id}")
         if not signing_secret:
             raise ValueError("SIGNING_SECRET_REQUIRED")
+        if kill_switch is None:
+            raise ValueError("KILL_SWITCH_REQUIRED")
         self._signing_secret = signing_secret
         # Re-checked here so a direct adapter call cannot bypass a halt.
         # Duplicate-order protection remains ExecutionGate's job.
@@ -78,7 +80,7 @@ class CcxtExchangeAdapter:
             raise UnauthorizedOrder("APPROVED_QUANTITY_MISMATCH")
         if not verify_approval(digest, a.policy_version, a.nonce, a.expires_at.isoformat(), a.approved_notional, a.signature, self._signing_secret):
             raise UnauthorizedOrder("INVALID_APPROVAL_SIGNATURE")
-        if self._kill_switch is not None and self._kill_switch.active(p.account_id, p.symbol, p.strategy_id):
+        if self._kill_switch.active(p.account_id, p.symbol, p.strategy_id):
             raise UnauthorizedOrder("KILL_SWITCH_ACTIVE")
 
     def _reference_price(self, order: AuthorizedOrder) -> Decimal:
@@ -113,8 +115,15 @@ class CcxtExchangeAdapter:
             raise UnauthorizedOrder("APPROVED_NOTIONAL_EXCEEDED")
 
     def submit(self, order: AuthorizedOrder) -> dict[str, Any]:
-        self._verify(order)
-        self._check_notional(order)
+        # Nothing has been sent before create_order, so any failure here is a
+        # pre-submit rejection; only create_order failures leave the outcome unknown.
+        try:
+            self._verify(order)
+            self._check_notional(order)
+        except PreSubmitRejection:
+            raise
+        except Exception as exc:
+            raise InvalidOrder(f"PRE_SUBMIT_ERROR:{type(exc).__name__}") from exc
         p = order.proposal
         if p.order_type == "market":
             return self.exchange.create_order(p.symbol, "market", p.side, float(p.quantity))
