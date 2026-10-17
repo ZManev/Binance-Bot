@@ -18,7 +18,7 @@ def test_supported_exchanges_are_explicit():
 
 def test_unknown_exchange_is_rejected_before_credentials():
     with pytest.raises(ValueError, match="UNSUPPORTED_EXCHANGE"):
-        CcxtExchangeAdapter("unknown", StaticCredentials(), sandbox=True)
+        CcxtExchangeAdapter("unknown", StaticCredentials(), b"secret", sandbox=True)
 
 
 def test_fill_event_normalizes_exchange_response():
