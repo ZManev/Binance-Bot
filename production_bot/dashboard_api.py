@@ -1,6 +1,6 @@
-""""Authenticated dashboard API and execution worker lifecycle."""
+"""Authenticated dashboard API and execution worker lifecycle."""
 from __future__ import annotations
-import hmac, json, os, re, threading, time
+import hmac, json, os, re, threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -45,10 +45,12 @@ class ApprovedOrderEnvelope(BaseModel):
     proposal: dict[str, Any]
     approval: dict[str, Any]
 
+@app.get("/healthz")
 @app.get("/api/healthz")
 def healthz() -> dict:
     return {"status": "ok", "service": "dashboard-api"}
 
+@app.get("/readyz")
 @app.get("/api/readyz")
 def readyz():
     ready = worker_state.ready() and startup_error is None
@@ -56,7 +58,7 @@ def readyz():
 
 @app.get("/api/status", dependencies=[Depends(require_token)])
 def status() -> dict:
-    counts: dict[str, int] = {}
+    counts = {}
     for bucket in ("incoming", "processing", "done", "rejected", "unknown"):
         directory = SPOOL_DIR / bucket
         counts[bucket] = len(list(directory.glob("*.json"))) if directory.exists() else 0
