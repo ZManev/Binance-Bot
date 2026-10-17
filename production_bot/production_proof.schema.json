@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Production Execution Proof",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "proof_version",
+    "git_commit_sha",
+    "environment",
+    "deployment_status",
+    "health_status",
+    "testnet_e2e_status",
+    "live_gate_status",
+    "execution_status",
+    "reconciliation_status",
+    "audit_status",
+    "proof_status"
+  ],
+  "properties": {
+    "proof_version": { "type": "string", "const": "1.0" },
+    "git_commit_sha": { "type": "string", "minLength": 7 },
+    "image_digest": { "type": ["string", "null"] },
+    "deployment_run_url": { "type": ["string", "null"], "format": "uri" },
+    "deployment_timestamp_utc": { "type": ["string", "null"], "format": "date-time" },
+    "environment": { "type": "string", "enum": ["local", "testnet", "production"] },
+    "deployment_status": { "type": "string", "enum": ["NOT_RUN", "BLOCKED", "PASS", "FAIL"] },
+    "health_status": { "type": "string", "enum": ["NOT_RUN", "BLOCKED", "PASS", "FAIL"] },
+    "testnet_e2e_status": { "type": "string", "enum": ["NOT_RUN", "BLOCKED", "PASS", "FAIL"] },
+    "live_gate_status": { "type": "string", "enum": ["NOT_RUN", "BLOCKED", "PASS", "FAIL"] },
+    "execution_status": { "type": "string", "enum": ["NOT_RUN", "BLOCKED", "NO_FILL", "FILL_CONFIRMED", "FAIL"] },
+    "exchange_order_id": { "type": ["string", "null"] },
+    "exchange_trade_ids": { "type": "array", "items": { "type": "string" } },
+    "executed_quantity": { "type": ["string", "null"] },
+    "average_fill_price": { "type": ["string", "null"] },
+    "fees": { "type": "array", "items": { "type": "object" } },
+    "account_snapshot_reference": { "type": ["string", "null"] },
+    "reconciliation_id": { "type": ["string", "null"] },
+    "reconciliation_status": { "type": "string", "enum": ["NOT_RUN", "BLOCKED", "PASS", "FAIL"] },
+    "audit_event_id": { "type": ["string", "null"] },
+    "audit_status": { "type": "string", "enum": ["NOT_RUN", "BLOCKED", "PASS", "FAIL"] },
+    "proof_status": { "type": "string", "enum": ["NOT_RUN", "BLOCKED", "PASS", "FAIL"] }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "proof_status": { "const": "PASS" } },
+        "required": ["proof_status"]
+      },
+      "then": {
+        "properties": {
+          "environment": { "const": "production" },
+          "deployment_status": { "const": "PASS" },
+          "health_status": { "const": "PASS" },
+          "testnet_e2e_status": { "const": "PASS" },
+          "live_gate_status": { "const": "PASS" },
+          "execution_status": { "const": "FILL_CONFIRMED" },
+          "reconciliation_status": { "const": "PASS" },
+          "audit_status": { "const": "PASS" },
+          "exchange_order_id": { "type": "string", "minLength": 1 },
+          "reconciliation_id": { "type": "string", "minLength": 1 },
+          "audit_event_id": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  ]
+}
