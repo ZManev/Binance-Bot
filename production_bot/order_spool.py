@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -59,8 +60,31 @@ def parse_order(data: dict[str, Any]) -> AuthorizedOrder:
     return AuthorizedOrder(proposal, approval)
 
 
+def publish_order(spool_dir: str, name: str, payload: dict[str, Any]) -> Path:
+    """Atomically publish an order into incoming/.
+
+    Writes to a hidden temp name the consumer never globs, fsyncs, then renames
+    into place, so the consumer only ever sees complete files. All producers must
+    use this (or the same write-temp-then-rename protocol).
+    """
+    if not name.endswith(".json") or "/" in name or name.startswith("."):
+        raise ValueError("INVALID_ORDER_FILENAME")
+    incoming = Path(spool_dir) / "incoming"
+    tmp = incoming / f".{uuid4().hex}.{name}.tmp"
+    with open(tmp, "x") as fh:
+        fh.write(json.dumps(payload))
+        fh.flush()
+        os.fsync(fh.fileno())
+    final = incoming / name
+    os.rename(tmp, final)
+    return final
+
+
 class SpoolConsumer:
     """Claims files from incoming/ and moves each to done/, rejected/ or unknown/.
+
+    Producers must publish atomically (see publish_order): only complete *.json
+    files may appear in incoming/. Partial writes would be rejected as malformed.
 
     unknown/ means an exchange request may have been sent; never auto-retry those.
     """

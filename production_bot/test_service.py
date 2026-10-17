@@ -7,7 +7,7 @@ from decimal import Decimal
 from .execution_store import FileKillSwitch, SqliteIdempotencyStore
 from .gate import ExecutionGate
 from .multi_exchange import CcxtExchangeAdapter, ExchangeCredentials
-from .order_spool import SpoolConsumer
+from .order_spool import SpoolConsumer, publish_order
 from .security import order_hash, sign_approval
 from .service import ServiceState, build
 from .models import TradeProposal
@@ -55,7 +55,17 @@ def _consumer(tmp_path, kill=None):
 
 
 def _drop(consumer, name, payload):
-    (consumer.root / "incoming" / name).write_text(json.dumps(payload))
+    publish_order(str(consumer.root), name, payload)
+
+
+def test_in_progress_temp_file_is_ignored(tmp_path):
+    consumer, adapter = _consumer(tmp_path)
+    partial = consumer.root / "incoming" / ".abc.a.json.tmp"
+    partial.write_text('{"proposal": {')  # writer still mid-write
+    assert consumer.process_once() == 0
+    assert partial.exists()
+    assert list((consumer.root / "rejected").iterdir()) == []
+    assert adapter.calls == []
 
 
 def test_limit_without_price_is_rejected_and_releases_reservation(tmp_path):
