@@ -1,0 +1,36 @@
+name: arbitrage-simulation
+
+on:
+  push:
+    branches:
+      - "feature/arbitrum-flashloan-simulation"
+      - "integration/**"
+  pull_request:
+    paths:
+      - "arbitrage/**"
+      - "tests/arbitrage/**"
+      - "tests/test_arbitrage_*.py"
+      - ".github/workflows/arbitrage-simulation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  simulation-tests:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test runner
+        run: python -m pip install --upgrade pip pytest
+      - name: Diagnose package layout
+        run: |
+          pwd
+          find arbitrage -maxdepth 4 -type f -print
+          python -c "import arbitrage; print('arbitrage file:', getattr(arbitrage, '__file__', None)); print('arbitrage path:', list(getattr(arbitrage, '__path__', [])))"
+      - name: Run offline arbitrage tests
+        run: python -m pytest tests/test_arbitrage_*.py -q
