@@ -26,5 +26,10 @@ jobs:
           python-version: "3.12"
       - name: Install test runner
         run: python -m pip install --upgrade pip pytest
+      - name: Diagnose package layout
+        run: |
+          pwd
+          find arbitrage -maxdepth 3 -type f -print
+          python -c "import arbitrage; print('arbitrage file:', getattr(arbitrage, '__file__', None)); print('arbitrage path:', list(getattr(arbitrage, '__path__', [])))"
       - name: Run offline simulation tests
         run: python -m pytest tests/arbitrage -q
