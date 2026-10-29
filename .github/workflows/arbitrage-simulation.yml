@@ -32,4 +32,4 @@ jobs:
           find arbitrage -maxdepth 3 -type f -print
           python -c "import arbitrage; print('arbitrage file:', getattr(arbitrage, '__file__', None)); print('arbitrage path:', list(getattr(arbitrage, '__path__', [])))"
       - name: Run offline simulation tests
-        run: python -m pytest --import-mode=importlib tests/arbitrage -q
+        run: python -m pytest tests/test_arbitrage_simulation.py -q
