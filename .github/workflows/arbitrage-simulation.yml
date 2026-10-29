@@ -9,6 +9,7 @@ on:
     paths:
       - "arbitrage/**"
       - "tests/arbitrage/**"
+      - "tests/test_arbitrage_*.py"
       - ".github/workflows/arbitrage-simulation.yml"
 
 permissions:
@@ -29,7 +30,7 @@ jobs:
       - name: Diagnose package layout
         run: |
           pwd
-          find arbitrage -maxdepth 3 -type f -print
+          find arbitrage -maxdepth 4 -type f -print
           python -c "import arbitrage; print('arbitrage file:', getattr(arbitrage, '__file__', None)); print('arbitrage path:', list(getattr(arbitrage, '__path__', [])))"
-      - name: Run offline simulation tests
-        run: python -m pytest tests/test_arbitrage_simulation.py -q
+      - name: Run offline arbitrage tests
+        run: python -m pytest tests/test_arbitrage_*.py -q
