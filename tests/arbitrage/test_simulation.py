@@ -42,12 +42,12 @@ def test_profitable_cross_dex_simulation_is_not_execution(engine):
 
 def test_unprofitable_route_is_rejected(engine):
     route = (q("dex-a", "USDC", "WETH", "10000", "5"),
-             q("dex-b", "WETH", "USDC", "9990", "9990"))
-    # This fixture is intentionally malformed at the amount boundary and must fail closed.
+             q("dex-b", "WETH", "USDC", "5", "9990"))
+    # Route is connected, but proceeds cannot repay principal, premium and gas.
     result = engine.simulate(strategy="cross_dex", borrowed_asset="USDC",
                              borrowed_amount=D("10000"), route=route, current_block=101)
     assert result.status is SimulationStatus.REJECTED
-    assert result.reason == "INTERMEDIATE_AMOUNT_MISMATCH"
+    assert result.reason == "NET_PROFIT_BELOW_MINIMUM"
 
 
 def test_triangular_cycle_validation():
