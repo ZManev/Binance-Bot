@@ -1,0 +1,30 @@
+name: arbitrage-readonly-container
+
+on:
+  push:
+    branches:
+      - "feature/arbitrum-flashloan-simulation"
+  pull_request:
+    paths:
+      - "arbitrage/**"
+      - "dashboard/**"
+      - "Dockerfile.arbitrage-readonly"
+      - "compose.arbitrum-readonly.yml"
+      - ".env.arbitrum-readonly.example"
+      - "DEPLOY_ARBITRUM_READONLY.md"
+      - ".github/workflows/arbitrage-readonly-image.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  readonly-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration
+        run: |
+          cp .env.arbitrum-readonly.example .env.arbitrum-readonly
+          docker compose -f compose.arbitrum-readonly.yml config --quiet
+      - name: Build read-only API image (no push)
+        run: docker build --pull -f Dockerfile.arbitrage-readonly -t ai-flashloan-arbitrage:readonly .

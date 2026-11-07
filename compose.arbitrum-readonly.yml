@@ -1,0 +1,48 @@
+services:
+  arbitrum-readonly-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.arbitrage-readonly
+    image: ai-flashloan-arbitrage:readonly
+    container_name: ai-flashloan-arbitrage-readonly
+    env_file:
+      - ./.env.arbitrum-readonly
+    environment:
+      EXECUTION_MODE: MAINNET_READ_ONLY
+      LIVE_TRADING: "false"
+      SIGNING_ENABLED: "false"
+      ALLOW_TRANSACTION_SUBMISSION: "false"
+      ALLOW_CONTRACT_DEPLOYMENT: "false"
+      EXECUTION_READY: "false"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "127.0.0.1:8787:8787"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 20s
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/api/health', timeout=3).read()"
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
