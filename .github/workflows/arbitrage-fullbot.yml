@@ -9,6 +9,7 @@ on:
       - "arbitrage/**"
       - "dashboard/**"
       - "tests/test_arbitrage_*.py"
+      - "tests/test_mainnet_readiness.py"
       - "requirements-arbitrage.txt"
       - ".github/workflows/arbitrage-fullbot.yml"
 permissions:
@@ -28,4 +29,4 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-arbitrage.txt
       - name: Run arbitrage simulation and API tests
-        run: python -m pytest tests/test_arbitrage_fullbot.py tests/test_arbitrage_*.py -q
+        run: python -m pytest tests/test_arbitrage_fullbot.py tests/test_arbitrage_*.py tests/test_mainnet_readiness.py -q
