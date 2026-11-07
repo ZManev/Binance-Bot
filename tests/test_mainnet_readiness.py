@@ -37,3 +37,19 @@ def test_readiness_checks_contract_code_without_writes(monkeypatch):
     assert set(methods) <= {"eth_chainId", "eth_blockNumber", "eth_call", "eth_getCode"}
     assert report.execution_ready is False
     assert report.transaction_submission_enabled is False
+
+
+def test_wrong_chain_stops_all_contract_reads(monkeypatch):
+    monkeypatch.setenv("AAVE_V3_ADDRESSES_PROVIDER", "0x2222222222222222222222222222222222222222")
+    methods = []
+    def transport(url, body, timeout):
+        req = json.loads(body.decode())
+        methods.append(req["method"])
+        result = "0x1" if req["method"] == "eth_chainId" else "0x0"
+        return json.dumps({"jsonrpc":"2.0","id":1,"result":result}).encode()
+    rpc = ArbitrumReadOnlyClient("https://rpc.example.invalid", transport=transport)
+    report = inspect_mainnet_readiness(rpc)
+    assert report.chain_id == 0
+    assert report.execution_ready is False
+    assert methods == ["eth_chainId"]
+    assert all(c.status == "NOT_RUN" for c in report.checks if c.name != "arbitrum_rpc")
