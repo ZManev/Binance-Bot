@@ -43,3 +43,25 @@ python -m pytest tests/test_arbitrage_fullbot.py tests/test_arbitrage_*.py -q
 - Aave and Arbitrum integration endpoints use read-only RPC methods only.
 
 A PASS on an offline test proves only that the tested code path passed. It is not proof of live liquidity, executable profit, deployed contract safety, or mainnet readiness.
+
+
+## Mainnet preparation profile (not trading activation)
+
+The selected target is Arbitrum One, an initial risk budget cap of 50 USDC, and a future limited-execution profile. This commit does **not** implement or enable limited execution.
+
+Read-only preflight:
+- Configure ARBITRUM_RPC_URL and AAVE_V3_ADDRESSES_PROVIDER locally using trusted provider details and the official Aave Address Book.
+- Start the API and call GET /api/mainnet/readiness.
+- The endpoint verifies Arbitrum One chain identity, current block, Aave Pool resolution/bytecode, and bytecode at the official Uniswap V3 Quoter V2, Camelot AMMv3 Quoter, native USDC, and WETH reference addresses.
+- A PASS means only that the queried address has bytecode on the connected chain. It does not verify ABI compatibility, token reserve liquidity, live swap quotes, profit, or execution safety.
+
+Hard locks remain:
+- execution_ready=false
+- signing_enabled=false
+- transaction_submission_enabled=false
+- deployment_enabled=false
+- ExecutionPolicy continues to reject every mode other than SIMULATION.
+
+No wallet signer, private key, transaction builder, eth_sendRawTransaction, flash-loan receiver contract, or live DEX swap implementation is included. LIMITED is recorded as the requested future profile only; it is not an enabled runtime mode. Do not transfer the 50 USDC budget or authorize a transaction based on this readiness endpoint.
+
+A separate approval and security-reviewed implementation are required before any mainnet signing/submission code is introduced. Budgeting must also account for a separate ETH gas reserve; 50 USDC alone does not pay Arbitrum gas.
