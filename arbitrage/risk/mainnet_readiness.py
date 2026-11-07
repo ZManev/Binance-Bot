@@ -58,14 +58,17 @@ def inspect_mainnet_readiness(rpc: ArbitrumReadOnlyClient | None = None) -> Main
                 checks.append(Check("arbitrum_rpc", "FAIL", str(exc)))
 
     chain_id = 0
+    chain_ok = False
     if client is not None:
         try:
             chain_id = client.require_arbitrum_one()
             block = client.block_number()
+            chain_ok = True
             checks.append(Check("arbitrum_rpc", "PASS", f"Arbitrum One chainId=42161, block={block}"))
         except RpcError as exc:
             checks.append(Check("arbitrum_rpc", "FAIL", str(exc)))
 
+    if client is not None and chain_ok:
         provider = os.getenv("AAVE_V3_ADDRESSES_PROVIDER", "").strip()
         if not provider:
             checks.append(Check("aave_v3", "NOT_CONFIGURED", "Set AAVE_V3_ADDRESSES_PROVIDER from the official Aave Address Book"))
@@ -92,9 +95,10 @@ def inspect_mainnet_readiness(rpc: ArbitrumReadOnlyClient | None = None) -> Main
             except (ValueError, RpcError) as exc:
                 checks.append(Check(name, "FAIL", str(exc)))
     else:
+        reason = "Arbitrum One chain identity not verified" if client is not None else "No verified Arbitrum RPC connection"
         for name in ("aave_v3", "uniswap_v3_quoter_v2", "camelot_v3_quoter", "native_usdc", "weth"):
             if not any(c.name == name for c in checks):
-                checks.append(Check(name, "NOT_RUN", "No verified Arbitrum RPC connection"))
+                checks.append(Check(name, "NOT_RUN", reason))
 
     # This build intentionally has no signer or transaction-submission implementation.
     return MainnetReadiness(
