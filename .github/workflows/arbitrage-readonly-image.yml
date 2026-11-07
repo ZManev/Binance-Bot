@@ -11,6 +11,7 @@ on:
       - "Dockerfile.arbitrage-readonly"
       - "compose.arbitrum-readonly.yml"
       - ".env.arbitrum-readonly.example"
+      - "DEPLOY_ARBITRUM_READONLY.md"
       - ".github/workflows/arbitrage-readonly-image.yml"
 
 permissions:
