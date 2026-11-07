@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from arbitrage.adapters.arbitrum import ArbitrumReadOnlyClient, RpcError
 from arbitrage.integrations.aave_v3 import AaveV3ReadOnlyClient
 from arbitrage.scanner.engine import OpportunityScanner
+from arbitrage.risk.mainnet_readiness import inspect_mainnet_readiness
 
 ROOT = Path(__file__).resolve().parents[2]
 DASHBOARD = ROOT / "dashboard" / "index.html"
@@ -57,6 +58,11 @@ def aave_status() -> dict[str, Any]:
                 "pool_has_code":market.pool_has_code,"read_only":True}
     except (ValueError, RpcError) as exc:
         return {"status":"NOT_VERIFIED","reason":str(exc),"read_only":True}
+
+@app.get("/api/mainnet/readiness")
+def mainnet_readiness() -> dict[str, Any]:
+    """Read-only Arbitrum/Aave/DEX deployment preflight; never unlocks execution."""
+    return inspect_mainnet_readiness().to_dict()
 
 @app.get("/api/opportunities")
 def opportunities() -> dict[str, Any]:
