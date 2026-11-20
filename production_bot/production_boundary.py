@@ -101,14 +101,14 @@ class KillSwitch(Protocol):
 
 
 class FileKillSwitch:
-    """Fail-closed persistent switch: missing/unreadable state means halted."""
+    """Fail-closed persistent switch: only an explicit RUN state unhalts execution."""
 
     def __init__(self, path: str) -> None:
         self.path = Path(path)
 
     def active(self, account_id: str = "", symbol: str = "", strategy_id: str = "") -> bool:
         try:
-            return self.path.exists()
+            return self.path.read_text(encoding="utf-8").strip() != "RUN"
         except OSError:
             return True
 
